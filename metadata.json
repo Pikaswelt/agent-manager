@@ -1,0 +1,6 @@
+{
+  "name": "Agent Workspace",
+  "description": "Desktop-Oberfläche für lokale KI-Agenten und mehrere CLI-Anbieter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

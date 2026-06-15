@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    @apply antialiased overflow-hidden m-0;
+    background: #111111;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag,
+.app-no-drag * {
+  -webkit-app-region: no-drag;
+}
+
+.window-control {
+  @apply w-10 h-8 flex items-center justify-center hover:bg-white/10 hover:text-white transition-colors;
+}
+
+.context-button {
+  @apply flex items-center gap-1.5 text-zinc-500 hover:text-white hover:bg-white/5 px-2.5 py-1 rounded-md transition-colors;
+}
+
+.panel {
+  @apply bg-white/[0.025] border border-white/[0.07] rounded-xl p-5;
+}
+
+.input {
+  @apply bg-black/25 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-700 outline-none focus:border-white/20;
+}
+
+.primary-button {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 disabled:bg-white/10 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors;
+}
+
+.section-label {
+  @apply text-[10px] font-semibold uppercase tracking-wider text-zinc-600;
+}
+
+[data-theme="classic-light"] aside,
+[data-theme="muted-earth"] aside {
+  background: linear-gradient(to bottom, #f2eee7, #d8d1c5) !important;
+  border-color: rgb(0 0 0 / 0.08) !important;
+}
+
+[data-theme="classic-light"] .text-white,
+[data-theme="muted-earth"] .text-white {
+  color: #18181b !important;
+}
+
+[data-theme="classic-light"] .text-zinc-200,
+[data-theme="classic-light"] .text-zinc-300,
+[data-theme="classic-light"] .text-zinc-400,
+[data-theme="muted-earth"] .text-zinc-200,
+[data-theme="muted-earth"] .text-zinc-300,
+[data-theme="muted-earth"] .text-zinc-400 {
+  color: #3f3f46 !important;
+}
+
+[data-theme="classic-light"] .panel,
+[data-theme="classic-light"] .input,
+[data-theme="muted-earth"] .panel,
+[data-theme="muted-earth"] .input {
+  background: rgb(255 255 255 / 0.55) !important;
+  border-color: rgb(0 0 0 / 0.1) !important;
+}
+
+[data-theme="classic-light"] [class*="bg-[#18"],
+[data-theme="classic-light"] [class*="bg-[#14"],
+[data-theme="muted-earth"] [class*="bg-[#18"],
+[data-theme="muted-earth"] [class*="bg-[#14"] {
+  background-color: #f5f1ea !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-zinc-700/50 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-600 rounded-full;
+}
