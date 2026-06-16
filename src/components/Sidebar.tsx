@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Blocks,
+  Gauge,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -85,6 +86,10 @@ export default function Sidebar({ onSettingsClick }: { onSettingsClick: () => vo
         >
           <Clock className="w-4 h-4" />
           Automatisierungen
+        </button>
+        <button onClick={() => setMainView('usage')} className={navClass(mainView === 'usage')}>
+          <Gauge className="w-4 h-4" />
+          Nutzung
         </button>
       </div>
 

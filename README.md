@@ -1,23 +1,23 @@
-# Agent Workspace
+# CodeForge
 
-Electron-Desktop-App für lokale Coding-Agenten:
+Electron-Desktop-App fuer lokale Coding-Agenten:
 
 ```text
 React UI
   -> sichere Electron IPC-Bridge
   -> Node child_process
   -> Antigravity CLI, Codex CLI oder Claude Code
-  -> ausgewählter Projektordner
+  -> ausgewaehlter Projektordner
 ```
 
 ## Voraussetzungen
 
 - Node.js 20 oder neuer
 - Mindestens eine installierte und angemeldete CLI:
-  - `agy` für Google Antigravity
-  - `codex` für OpenAI Codex
-  - `claude` für Anthropic Claude Code
-- Optional: Git für Branch-Auswahl
+  - `agy` fuer Google Antigravity
+  - `codex` fuer OpenAI Codex
+  - `claude` fuer Anthropic Claude Code
+- Optional: Git fuer Branch-Auswahl
 
 ## Entwicklung
 
@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-## Prüfen und bauen
+## Pruefen und bauen
 
 ```powershell
 npm run lint
@@ -39,6 +39,6 @@ npm run dist
 ## Sicherheit
 
 Der Renderer hat keinen direkten Node-Zugriff. Dateioperationen, Git, npm,
-Fenstersteuerung und Agent-Prozesse laufen ausschließlich über die begrenzte
+Fenstersteuerung und Agent-Prozesse laufen ausschliesslich ueber die begrenzte
 Preload-API. Der Zugriffsmodus kann pro Anfrage auf Nur-Lesen,
 Projektzugriff oder Vollzugriff gesetzt werden.

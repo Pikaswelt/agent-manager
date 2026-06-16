@@ -1,4 +1,4 @@
-import type { AgentRequest, AgentResult, CliStatus, GitInfo } from './types';
+import type { AgentRequest, AgentResult, CliStatus, GitInfo, SystemPromptRequest } from './types';
 
 declare global {
   interface Window {
@@ -7,6 +7,8 @@ declare global {
       selectAttachments(): Promise<string[]>;
       getSystemStatus(): Promise<CliStatus>;
       runAgent(request: AgentRequest): Promise<AgentResult>;
+      generateSystemPrompt(request: SystemPromptRequest): Promise<AgentResult>;
+      notifyAgentComplete(input: { title: string; body: string }): Promise<boolean>;
       cancelAgent(runId: string): Promise<boolean>;
       onAgentOutput(
         callback: (payload: { runId: string; chunk: string; stream: 'stdout' | 'stderr' }) => void,
@@ -20,6 +22,7 @@ declare global {
       installPlugin(projectPath: string, packageName: string): Promise<string>;
       removePlugin(projectPath: string, packageName: string): Promise<string>;
       openExternal(url: string): Promise<void>;
+      openPath(path: string): Promise<string>;
       minimizeWindow(): void;
       maximizeWindow(): void;
       closeWindow(): void;

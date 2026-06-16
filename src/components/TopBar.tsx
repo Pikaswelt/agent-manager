@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppContext } from '../AppContext';
+import AppLogo from './AppLogo';
 
 export default function TopBar({ onSettingsClick }: { onSettingsClick: () => void }) {
   const {
@@ -67,6 +68,10 @@ export default function TopBar({ onSettingsClick }: { onSettingsClick: () => voi
       className="app-drag flex items-center justify-between h-10 px-3 bg-black/10 text-zinc-400 select-none shrink-0"
     >
       <div className="app-no-drag flex items-center gap-3">
+        <div className="flex items-center gap-2 pr-2 text-zinc-200">
+          <AppLogo className="w-5 h-5" />
+          <span className="text-[12px] font-semibold tracking-wide">CodeForge</span>
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={navigateBack}

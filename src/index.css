@@ -108,3 +108,99 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   @apply bg-zinc-600 rounded-full;
 }
+
+.run-progress {
+  background: linear-gradient(90deg, #f2c96d, #64d2ff, #a78bfa, #f2c96d);
+  background-size: 220% 100%;
+  animation: run-progress-flow 1.25s linear infinite;
+  transition: width 400ms ease;
+}
+
+.run-pulse {
+  border: 1px solid rgb(100 210 255 / 0.35);
+  animation: run-pulse 1.4s ease-out infinite;
+}
+
+.run-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.run-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent, rgb(255 255 255 / 0.055), transparent);
+  transform: translateX(-100%);
+  animation: run-card-shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.forge-feed {
+  border-left: 1px solid rgb(255 255 255 / 0.08);
+  padding-left: 1rem;
+}
+
+.forge-feed-visible {
+  display: grid;
+  gap: 1rem;
+  position: relative;
+}
+
+.forge-feed-visible > * {
+  position: relative;
+}
+
+.forge-feed-visible > *::before {
+  content: "";
+  position: absolute;
+  left: -1.34rem;
+  top: 0.5rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgb(110 231 183 / 0.45);
+  background: #101815;
+}
+
+.forge-feed-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f2c96d, #6ee7b7);
+  box-shadow: 0 0 18px rgb(110 231 183 / 0.35);
+}
+
+.forge-feed > :not(.run-feed-visible) {
+  display: none;
+}
+
+@keyframes run-progress-flow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 220% 50%;
+  }
+}
+
+@keyframes run-pulse {
+  from {
+    opacity: 0.75;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.42);
+  }
+}
+
+@keyframes run-card-shimmer {
+  0%,
+  45% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

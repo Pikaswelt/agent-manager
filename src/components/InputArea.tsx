@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   GitBranch,
+  Gauge,
   Mic,
   Monitor,
   Paperclip,
@@ -44,9 +45,10 @@ export default function InputArea() {
     gitInfo,
     branches,
     switchBranch,
+    usage,
   } = useAppContext();
   const [text, setText] = useState('');
-  const [dropdown, setDropdown] = useState<'access' | 'model' | 'project' | 'runtime' | 'branch' | null>(
+  const [dropdown, setDropdown] = useState<'access' | 'model' | 'project' | 'runtime' | 'usage' | 'branch' | null>(
     null,
   );
   const [error, setError] = useState('');
@@ -92,6 +94,7 @@ export default function InputArea() {
   const models = PROVIDER_MODELS[provider];
   const selectedModel = models.find((model) => model.id === aiModel) || models[0];
   const runtime = cliStatus[provider];
+  const remainingTokens = usage.tokenLimit > 0 ? Math.max(0, usage.tokenLimit - usage.totalTokens) : null;
 
   return (
     <div className="w-full max-w-[760px] mt-4">
@@ -263,6 +266,25 @@ export default function InputArea() {
                 <div className="text-xs text-white">{runtime.installed ? runtime.version : 'Nicht installiert'}</div>
                 <div className="text-[10px] text-zinc-600 mt-1 break-all">
                   {runtime.executable || 'Die gewählte CLI ist nicht im PATH verfügbar.'}
+                </div>
+              </div>
+            </Dropdown>
+          )}
+
+          <button
+            onClick={() => setDropdown(dropdown === 'usage' ? null : 'usage')}
+            className="context-button"
+          >
+            <Gauge className="w-3.5 h-3.5" />
+            {remainingTokens === null ? `${usage.totalTokens.toLocaleString('de-DE')} Tokens` : `${remainingTokens.toLocaleString('de-DE')} uebrig`}
+          </button>
+          {dropdown === 'usage' && (
+            <Dropdown className="left-64 w-72">
+              <div className="px-3 py-2">
+                <div className="text-xs text-white">Token-Nutzung</div>
+                <div className="text-[10px] text-zinc-600 mt-1">
+                  Verbraucht: {usage.totalTokens.toLocaleString('de-DE')}
+                  {usage.tokenLimit ? ` von ${usage.tokenLimit.toLocaleString('de-DE')}` : ' · kein Limit gesetzt'}
                 </div>
               </div>
             </Dropdown>

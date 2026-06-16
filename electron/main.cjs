@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Notification } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -6,6 +6,10 @@ const crypto = require('node:crypto');
 
 const activeProcesses = new Map();
 let mainWindow = null;
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('app.codeforge.desktop');
+}
 
 const PROVIDERS = {
   antigravity: {
@@ -49,6 +53,8 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#111111',
+    title: 'CodeForge',
+    icon: path.join(__dirname, '..', 'assets', 'codeforge.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -98,7 +104,7 @@ function runCapture(command, args, options = {}) {
       : args;
     const child = spawn(spawnCommand, spawnArgs, {
       cwd: options.cwd,
-      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+      env: { ...process.env, ...(options.env || {}), FORCE_COLOR: '0', NO_COLOR: '1' },
       windowsHide: true,
       shell: false,
       windowsVerbatimArguments: isCommandScript,
@@ -165,6 +171,43 @@ function buildPrompt(prompt, attachments, access, projectPath) {
   return `${accessInstruction}\n\n${prompt}${attachmentInstruction}`;
 }
 
+function buildProviderEnv(provider, apiKeys = {}) {
+  const key = typeof apiKeys[provider] === 'string' ? apiKeys[provider].trim() : '';
+  if (!key) return {};
+  if (provider === 'openai') return { OPENAI_API_KEY: key };
+  if (provider === 'anthropic') return { ANTHROPIC_API_KEY: key };
+  return {
+    GOOGLE_API_KEY: key,
+    GEMINI_API_KEY: key,
+    ANTIGRAVITY_API_KEY: key,
+  };
+}
+
+function withSystemPrompt(systemPrompt, prompt) {
+  const trimmed = typeof systemPrompt === 'string' ? systemPrompt.trim() : '';
+  if (!trimmed) return prompt;
+  return `System-Prompt:\n${trimmed}\n\nNutzerauftrag:\n${prompt}`;
+}
+
+function showTaskNotification(input = {}) {
+  if (!Notification.isSupported()) return false;
+  const title = String(input.title || 'CodeForge').slice(0, 80);
+  const body = String(input.body || 'Aufgabe ist erledigt.').slice(0, 240);
+  const notification = new Notification({
+    title,
+    body,
+    icon: path.join(__dirname, '..', 'assets', 'codeforge.png'),
+  });
+  notification.on('click', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  notification.show();
+  return true;
+}
+
 async function runAgent(event, request) {
   const provider = PROVIDERS[request.provider];
   if (!provider) throw new Error('Unbekannter Anbieter.');
@@ -190,7 +233,7 @@ async function runAgent(event, request) {
     return {
       ok: false,
       output: '',
-      error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte Agent Workspace neu.`,
+      error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte CodeForge neu.`,
       exitCode: -1,
     };
   }
@@ -204,7 +247,7 @@ async function runAgent(event, request) {
   }
 
   const prompt = buildPrompt(
-    request.prompt,
+    withSystemPrompt(request.systemPrompt, request.prompt),
     request.attachments,
     request.access,
     request.projectPath,
@@ -248,6 +291,7 @@ async function runAgent(event, request) {
   const result = await runCapture(executable, args, {
     cwd: request.projectPath,
     stdin,
+    env: buildProviderEnv(request.provider, request.apiKeys),
     onSpawn: (child) => activeProcesses.set(runId, child),
     onOutput: (chunk, stream) => {
       event.sender.send('agent:output', { runId, chunk, stream });
@@ -257,7 +301,96 @@ async function runAgent(event, request) {
 
   return {
     ok: result.ok,
-    output: (result.stdout || result.stderr).trim(),
+    output: [result.stdout, result.stderr].filter(Boolean).join('\n').trim(),
+    error: result.error,
+    exitCode: result.exitCode,
+  };
+}
+
+async function generateSystemPrompt(_event, request) {
+  const generationAccess = 'read-only';
+  const provider = PROVIDERS[request.provider];
+  if (!provider) throw new Error('Unbekannter Anbieter.');
+  if (!MODEL_ALLOWLIST[request.provider]?.has(request.model)) {
+    throw new Error('Das angeforderte Modell ist fuer diesen Anbieter nicht freigegeben.');
+  }
+  if (!['read-only', 'workspace-write', 'full'].includes(request.access)) {
+    throw new Error('Ungueltiger Zugriffsmodus.');
+  }
+  if (
+    !request.projectPath ||
+    !fs.existsSync(request.projectPath) ||
+    !fs.statSync(request.projectPath).isDirectory()
+  ) {
+    throw new Error('Der Projektordner existiert nicht.');
+  }
+
+  const executable = await findExecutable(provider.command);
+  if (!executable) {
+    return {
+      ok: false,
+      output: '',
+      error: `${provider.label} wurde nicht gefunden. Installiere die CLI und starte CodeForge neu.`,
+      exitCode: -1,
+    };
+  }
+  if (request.provider === 'antigravity' && /\.(cmd|bat)$/i.test(executable)) {
+    return {
+      ok: false,
+      output: '',
+      error: 'Fuer Antigravity wird unter Windows die native agy-Installation benoetigt, kein unsicherer .cmd-Wrapper.',
+      exitCode: -1,
+    };
+  }
+
+  const prompt = buildPrompt(
+    'Erstelle einen empfohlenen System-Prompt fuer einen lokalen Coding-Agenten in diesem Projekt. Antworte nur mit dem fertigen System-Prompt, ohne Markdown, ohne Erklaerung. Der Prompt soll kurz, praezise und sicher sein: bestehende Patterns lesen, Nutzerarbeit schuetzen, relevante Dateien aendern, Tests/Builds pruefen, knapp auf Deutsch antworten.',
+    [],
+    generationAccess,
+    request.projectPath,
+  );
+  const args = [];
+  let stdin = '';
+
+  if (request.provider === 'antigravity') {
+    args.push('-p', prompt, '--model', request.model);
+  } else if (request.provider === 'openai') {
+    args.push(
+      'exec',
+      '-',
+      '--model',
+      request.model,
+      '--cd',
+      request.projectPath,
+      '--color',
+      'never',
+      '--skip-git-repo-check',
+      '--sandbox',
+      accessToCodexSandbox(generationAccess),
+    );
+    stdin = prompt;
+  } else {
+    args.push(
+      '-p',
+      '--model',
+      request.model,
+      '--output-format',
+      'text',
+      '--permission-mode',
+      accessToClaudeMode(generationAccess),
+    );
+    stdin = prompt;
+  }
+
+  const result = await runCapture(executable, args, {
+    cwd: request.projectPath,
+    stdin,
+    env: buildProviderEnv(request.provider, request.apiKeys),
+  });
+
+  return {
+    ok: result.ok,
+    output: [result.stdout, result.stderr].filter(Boolean).join('\n').trim(),
     error: result.error,
     exitCode: result.exitCode,
   };
@@ -331,6 +464,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('system:status', getCliStatus);
   ipcMain.handle('agent:run', runAgent);
+  ipcMain.handle('agent:generate-system-prompt', generateSystemPrompt);
+  ipcMain.handle('agent:notify-complete', (_event, input) => showTaskNotification(input));
   ipcMain.handle('agent:cancel', (_event, runId) => {
     const child = activeProcesses.get(runId);
     if (!child) return false;
@@ -375,6 +510,11 @@ app.whenReady().then(() => {
     const parsed = new URL(url);
     if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('URL-Protokoll nicht erlaubt.');
     return shell.openExternal(parsed.toString());
+  });
+  ipcMain.handle('shell:open-path', (_event, targetPath) => {
+    if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error('Ungueltiger Pfad.');
+    if (/^[a-z]+:\/\//i.test(targetPath)) throw new Error('Nur lokale Dateipfade sind erlaubt.');
+    return shell.openPath(targetPath);
   });
 
   ipcMain.on('window:minimize', () => mainWindow?.minimize());

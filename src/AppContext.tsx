@@ -10,6 +10,8 @@ import {
 } from 'react';
 import type {
   AccessMode,
+  AgentRunStats,
+  ApiKeys,
   Automation,
   Chat,
   CliStatus,
@@ -17,6 +19,8 @@ import type {
   Message,
   ProjectFolder,
   ProviderId,
+  UsageRecord,
+  UsageState,
 } from './types';
 
 export type Theme =
@@ -25,7 +29,7 @@ export type Theme =
   | 'deep-galactic'
   | 'muted-earth'
   | 'neon-cyber';
-export type MainView = 'chat' | 'plugins' | 'automations';
+export type MainView = 'chat' | 'plugins' | 'automations' | 'usage';
 
 export const PROVIDER_MODELS: Record<ProviderId, { id: string; name: string }[]> = {
   antigravity: [
@@ -65,24 +69,37 @@ const EMPTY_STATUS: CliStatus = {
   anthropic: { installed: false, executable: '', version: '' },
 };
 
+const EMPTY_USAGE: UsageState = {
+  tokenLimit: 0,
+  totalTokens: 0,
+  records: [],
+};
+
 const STORAGE_PREFIX = 'agentWorkspace';
+
+export const RECOMMENDED_SYSTEM_PROMPT =
+  'Du bist ein sorgfaeltiger Coding-Agent im lokalen Projekt. Arbeite in kleinen, nachvollziehbaren Schritten, lies vorhandene Patterns zuerst, veraendere nur relevante Dateien, schuetze bestehende Nutzerarbeit und pruefe deine Aenderungen mit passenden Tests oder Builds. Antworte knapp, ehrlich und mit konkreten Ergebnissen.';
 
 interface AppContextType {
   folders: ProjectFolder[];
   chats: Chat[];
   automations: Automation[];
   plugins: string[];
+  usage: UsageState;
   selectedChatId: string | null;
   selectedFolderId: string | null;
   selectedProject: ProjectFolder | null;
   provider: ProviderId;
   aiModel: string;
   accessMode: AccessMode;
+  apiKeys: ApiKeys;
+  systemPrompt: string;
   theme: Theme;
   mainView: MainView;
   hasSetupCompleted: boolean;
   isSending: boolean;
   activeRunId: string | null;
+  runStats: AgentRunStats | null;
   attachments: string[];
   cliStatus: CliStatus;
   gitInfo: GitInfo;
@@ -92,6 +109,12 @@ interface AppContextType {
   setProvider(provider: ProviderId): void;
   setAiModel(model: string): void;
   setAccessMode(mode: AccessMode): void;
+  setTokenLimit(limit: number): void;
+  resetUsage(): void;
+  setApiKey(provider: ProviderId, key: string): void;
+  setSystemPrompt(prompt: string): void;
+  useRecommendedSystemPrompt(): void;
+  generateSystemPrompt(): Promise<string>;
   setTheme(theme: Theme): void;
   setMainView(view: MainView): void;
   setHasSetupCompleted(value: boolean): void;
@@ -142,6 +165,24 @@ function newId() {
   return crypto.randomUUID();
 }
 
+function parseTokenUsage(output: string) {
+  const match =
+    output.match(/^tokens used\s*\n\s*([0-9][0-9.,]*)/im) ||
+    output.match(/\btokens used\s+([0-9][0-9.,]*)/i);
+  if (!match) return 0;
+  const raw = match[1].trim();
+  if (/,\d{1,2}$/.test(raw)) return Math.round(Number(raw.replace(/\./g, '').replace(',', '.')));
+  return Number(raw.replace(/[.,]/g, '')) || 0;
+}
+
+function formatDurationForNotification(ms: number) {
+  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [folders, setFolders] = useState<ProjectFolder[]>(() => readStorage('folders', []));
   const [chats, setChats] = useState<Chat[]>(() => readStorage('chats', []));
@@ -149,6 +190,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readStorage('automations', []),
   );
   const [plugins, setPlugins] = useState<string[]>(() => readStorage('plugins', []));
+  const [usage, setUsage] = useState<UsageState>(() =>
+    readStorage<UsageState>('usage', EMPTY_USAGE),
+  );
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() =>
     readStorage<string | null>('selectedFolder', null),
@@ -162,6 +206,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [accessMode, setAccessModeState] = useState<AccessMode>(() =>
     readStorage<AccessMode>('access', 'workspace-write'),
   );
+  const [apiKeys, setApiKeys] = useState<ApiKeys>(() => readStorage<ApiKeys>('apiKeys', {}));
+  const [systemPrompt, setSystemPromptState] = useState(() =>
+    readStorage('systemPrompt', RECOMMENDED_SYSTEM_PROMPT),
+  );
   const [theme, setThemeState] = useState<Theme>(() =>
     readStorage<Theme>('theme', 'modern-dark'),
   );
@@ -171,6 +219,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [isSending, setIsSending] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [runStats, setRunStats] = useState<AgentRunStats | null>(null);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [cliStatus, setCliStatus] = useState<CliStatus>(EMPTY_STATUS);
   const [gitInfo, setGitInfo] = useState<GitInfo>({
@@ -193,6 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [automations],
   );
   useEffect(() => writeStorage('plugins', plugins), [plugins]);
+  useEffect(() => writeStorage('usage', usage), [usage]);
   useEffect(
     () => writeStorage('selectedFolder', selectedFolderId),
     [selectedFolderId],
@@ -229,6 +279,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshGit();
   }, [refreshGit]);
 
+  useEffect(() => {
+    if (!window.agentWorkspace?.onAgentOutput) return;
+    return window.agentWorkspace.onAgentOutput(({ runId, chunk }) => {
+      setRunStats((current) => {
+        if (!current || current.runId !== runId) return current;
+        const lines = chunk.split(/\r?\n/).filter(Boolean);
+        const fileMatches =
+          chunk.match(/[\w./\\-]+\.(?:ts|tsx|js|jsx|json|css|html|md|cjs|mjs|py|yml|yaml)/gi) || [];
+        const codeSignals =
+          (chunk.match(/\b(edit|patch|write|update|modify|create|build|compile|lint|diff|file)\b/gi) || [])
+            .length;
+        const testSignals =
+          (chunk.match(/\b(test|spec|lint|tsc|vite|passed|failed|build)\b/gi) || []).length;
+        const lastOutput = lines.at(-1)?.trim() || chunk.trim() || current.lastOutput;
+        const phase =
+          testSignals > 0
+            ? 'Prueft Ergebnis'
+            : codeSignals > 0
+              ? 'Codet im Projekt'
+              : current.outputLines === 0
+                ? 'Startet Agent'
+                : 'Analysiert Kontext';
+
+        return {
+          ...current,
+          outputLines: current.outputLines + lines.length,
+          outputBytes: current.outputBytes + chunk.length,
+          codeSignals: current.codeSignals + codeSignals,
+          testSignals: current.testSignals + testSignals,
+          files: [...new Set([...current.files, ...fileMatches])].slice(0, 12),
+          lastOutput,
+          liveOutput: `${current.liveOutput}${chunk}`,
+          phase,
+        };
+      });
+    });
+  }, []);
+
   const setProvider = (nextProvider: ProviderId) => {
     setProviderState(nextProvider);
     setAiModelState(DEFAULT_MODEL[nextProvider]);
@@ -244,6 +332,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setAccessMode = (mode: AccessMode) => {
     setAccessModeState(mode);
     writeStorage('access', mode);
+  };
+
+  const setTokenLimit = (limit: number) => {
+    setUsage((current) => ({
+      ...current,
+      tokenLimit: Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0,
+    }));
+  };
+
+  const resetUsage = () => {
+    setUsage((current) => ({ ...current, totalTokens: 0, records: [] }));
+  };
+
+  const setApiKey = (keyProvider: ProviderId, key: string) => {
+    setApiKeys((current) => {
+      const next = { ...current, [keyProvider]: key };
+      writeStorage('apiKeys', next);
+      return next;
+    });
+  };
+
+  const setSystemPrompt = (prompt: string) => {
+    setSystemPromptState(prompt);
+    writeStorage('systemPrompt', prompt);
+  };
+
+  const useRecommendedSystemPrompt = () => {
+    setSystemPrompt(RECOMMENDED_SYSTEM_PROMPT);
+  };
+
+  const generateSystemPrompt = async () => {
+    if (!window.agentWorkspace) throw new Error('Diese Funktion ist nur in der Desktop-App verfuegbar.');
+    if (!selectedProject) throw new Error('Waehle zuerst einen Projektordner.');
+    const result = await window.agentWorkspace.generateSystemPrompt({
+      provider,
+      model: aiModel,
+      access: accessMode,
+      apiKeys,
+      projectPath: selectedProject.path,
+    });
+    if (!result.ok) {
+      throw new Error(result.error || result.output || 'System-Prompt konnte nicht generiert werden.');
+    }
+    const generatedPrompt = result.output.trim();
+    setSystemPrompt(generatedPrompt);
+    return generatedPrompt;
   };
 
   const setTheme = (nextTheme: Theme) => {
@@ -338,7 +472,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (forceNewChat || !selectedChatId) selectChat(targetId);
     setIsSending(true);
     const runId = newId();
+    const runStartedAt = Date.now();
     setActiveRunId(runId);
+    setRunStats({
+      runId,
+      provider,
+      model: aiModel,
+      startedAt: runStartedAt,
+      outputLines: 0,
+      outputBytes: 0,
+      codeSignals: 0,
+      testSignals: 0,
+      files: [],
+      lastOutput: 'Agent wird gestartet...',
+      liveOutput: '',
+      phase: 'Startet Agent',
+    });
 
     const context = updatedChat.messages
       .slice(-12)
@@ -355,10 +504,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         provider,
         model: aiModel,
         access: accessMode,
+        apiKeys,
+        systemPrompt,
         prompt,
         projectPath: selectedProject.path,
         attachments,
       });
+      const tokenUsage = parseTokenUsage(result.output || result.error || '');
+      const durationMs = Date.now() - runStartedAt;
       const reply: Message = {
         id: newId(),
         text: result.ok
@@ -366,8 +519,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : result.error || result.output || 'Der Agent-Aufruf ist fehlgeschlagen.',
         sender: 'ai',
         timestamp: Date.now(),
+        runDurationMs: durationMs,
+        tokenUsage: tokenUsage || undefined,
         isError: !result.ok,
       };
+      void window.agentWorkspace.notifyAgentComplete({
+        title: result.ok ? 'CodeForge: Aufgabe erledigt' : 'CodeForge: Aufgabe fehlgeschlagen',
+        body: `${updatedChat.title} - ${formatDurationForNotification(durationMs)}`,
+      });
+      if (tokenUsage > 0) {
+        const record: UsageRecord = {
+          id: newId(),
+          provider,
+          model: aiModel,
+          tokens: tokenUsage,
+          timestamp: Date.now(),
+          chatId: targetId,
+          title: updatedChat.title,
+        };
+        setUsage((current) => ({
+          ...current,
+          totalTokens: current.totalTokens + tokenUsage,
+          records: [record, ...current.records].slice(0, 250),
+        }));
+      }
       setChats((current) =>
         current.map((chat) =>
           chat.id === targetId
@@ -384,6 +559,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timestamp: Date.now(),
         isError: true,
       };
+      void window.agentWorkspace.notifyAgentComplete({
+        title: 'CodeForge: Aufgabe fehlgeschlagen',
+        body: error instanceof Error ? error.message : 'Unbekannter Fehler beim Agent-Aufruf.',
+      });
       setChats((current) =>
         current.map((chat) =>
           chat.id === targetId ? { ...chat, messages: [...chat.messages, reply] } : chat,
@@ -392,6 +571,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSending(false);
       setActiveRunId(null);
+      setRunStats(null);
     }
   };
 
@@ -458,7 +638,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (due) void runAutomation(due.id);
     }, 30_000);
     return () => window.clearInterval(timer);
-  }, [automations, isSending, selectedProject, provider, aiModel, accessMode]);
+  }, [automations, isSending, selectedProject, provider, aiModel, accessMode, apiKeys, systemPrompt]);
 
   const navigateBack = () => {
     if (historyIndex <= 0) return;
@@ -487,17 +667,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       chats,
       automations,
       plugins,
+      usage,
       selectedChatId,
       selectedFolderId,
       selectedProject,
       provider,
       aiModel,
       accessMode,
+      apiKeys,
+      systemPrompt,
       theme,
       mainView,
       hasSetupCompleted,
       isSending,
       activeRunId,
+      runStats,
       attachments,
       cliStatus,
       gitInfo,
@@ -507,6 +691,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProvider,
       setAiModel,
       setAccessMode,
+      setTokenLimit,
+      resetUsage,
+      setApiKey,
+      setSystemPrompt,
+      useRecommendedSystemPrompt,
+      generateSystemPrompt,
       setTheme,
       setMainView,
       setHasSetupCompleted,
@@ -538,17 +728,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       chats,
       automations,
       plugins,
+      usage,
       selectedChatId,
       selectedFolderId,
       selectedProject,
       provider,
       aiModel,
       accessMode,
+      apiKeys,
+      systemPrompt,
       theme,
       mainView,
       hasSetupCompleted,
       isSending,
       activeRunId,
+      runStats,
       attachments,
       cliStatus,
       gitInfo,

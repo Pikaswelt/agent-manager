@@ -1,5 +1,6 @@
-import { CheckCircle2, FolderOpen, RefreshCw, Terminal, X, XCircle } from 'lucide-react';
-import { useAppContext, type Theme } from '../AppContext';
+import { CheckCircle2, FolderOpen, Gauge, KeyRound, Loader2, RefreshCw, Sparkles, Terminal, X, XCircle } from 'lucide-react';
+import { useState } from 'react';
+import { RECOMMENDED_SYSTEM_PROMPT, useAppContext, type Theme } from '../AppContext';
 import type { ProviderId } from '../types';
 
 const PROVIDERS: { id: ProviderId; label: string; command: string }[] = [
@@ -20,14 +21,25 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const {
     provider,
     setProvider,
+    apiKeys,
+    setApiKey,
+    systemPrompt,
+    setSystemPrompt,
+    useRecommendedSystemPrompt,
+    generateSystemPrompt,
     theme,
     setTheme,
     cliStatus,
     refreshCliStatus,
     selectedProject,
     addProject,
+    usage,
+    setTokenLimit,
+    resetUsage,
     setHasSetupCompleted,
   } = useAppContext();
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [promptError, setPromptError] = useState('');
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
@@ -90,6 +102,88 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <div className="text-[10px] text-zinc-600 truncate">{selectedProject?.path || 'Noch kein Ordner gewählt'}</div>
               </div>
             </button>
+          </section>
+
+          <section>
+            <div className="section-label flex items-center gap-2">
+              <KeyRound className="w-3.5 h-3.5" />
+              API-Key
+            </div>
+            <input
+              type="password"
+              value={apiKeys[provider] || ''}
+              onChange={(event) => setApiKey(provider, event.target.value)}
+              className="input w-full mt-3"
+              placeholder={`${PROVIDERS.find((item) => item.id === provider)?.label} API-Key`}
+              autoComplete="off"
+            />
+            <p className="text-[11px] leading-4 text-zinc-600 mt-2">
+              Der Key wird beim Start der gewaehlten CLI als passende Umgebungsvariable uebergeben.
+            </p>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <div className="section-label">System-Prompt</div>
+              <div className="flex gap-3">
+                <button
+                  onClick={useRecommendedSystemPrompt}
+                  className="text-[11px] text-amber-300 hover:text-amber-200"
+                  title={RECOMMENDED_SYSTEM_PROMPT}
+                >
+                  Empfohlen nutzen
+                </button>
+                <button
+                  onClick={async () => {
+                    setPromptError('');
+                    setGeneratingPrompt(true);
+                    try {
+                      await generateSystemPrompt();
+                    } catch (error) {
+                      setPromptError(error instanceof Error ? error.message : 'Generierung fehlgeschlagen.');
+                    } finally {
+                      setGeneratingPrompt(false);
+                    }
+                  }}
+                  disabled={!selectedProject || generatingPrompt}
+                  className="inline-flex items-center gap-1 text-[11px] text-zinc-300 hover:text-white disabled:text-zinc-700"
+                >
+                  {generatingPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  Mit AI generieren
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={systemPrompt}
+              onChange={(event) => setSystemPrompt(event.target.value)}
+              className="input w-full mt-3 min-h-32 resize-none"
+              placeholder="Lege fest, wie der Agent grundsaetzlich arbeiten soll."
+            />
+            {promptError && <div className="text-[11px] text-red-400 mt-2">{promptError}</div>}
+          </section>
+
+          <section>
+            <div className="section-label flex items-center gap-2">
+              <Gauge className="w-3.5 h-3.5" />
+              Nutzungslimit
+            </div>
+            <div className="grid grid-cols-[1fr_auto] gap-3 mt-3">
+              <input
+                type="number"
+                min={0}
+                value={usage.tokenLimit || ''}
+                onChange={(event) => setTokenLimit(Number(event.target.value))}
+                className="input w-full"
+                placeholder="Token-Limit, z.B. 200000"
+              />
+              <button onClick={resetUsage} className="px-3 rounded-lg border border-white/10 text-xs text-zinc-400 hover:text-red-300 hover:bg-white/5">
+                Reset
+              </button>
+            </div>
+            <div className="mt-2 text-[11px] text-zinc-600">
+              Verbraucht: {usage.totalTokens.toLocaleString('de-DE')} Tokens
+              {usage.tokenLimit ? ` · Verbleibend: ${Math.max(0, usage.tokenLimit - usage.totalTokens).toLocaleString('de-DE')}` : ''}
+            </div>
           </section>
 
           <section>

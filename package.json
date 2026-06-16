@@ -1,9 +1,9 @@
 {
-  "name": "agent-workspace-desktop",
+  "name": "codeforge-desktop",
   "private": true,
-  "version": "1.0.0",
-  "description": "Desktop UI for Antigravity CLI, Codex CLI and Claude Code",
-  "author": "Agent Workspace",
+  "version": "1.0.2",
+  "description": "Desktop UI for local coding agents across Antigravity CLI, Codex CLI and Claude Code",
+  "author": "CodeForge",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -37,10 +37,12 @@
     "wait-on": "^8.0.3"
   },
   "build": {
-    "appId": "app.agentworkspace.desktop",
-    "productName": "Agent Workspace",
+    "appId": "app.codeforge.desktop",
+    "productName": "CodeForge",
+    "artifactName": "CodeForge-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
+      "assets/**/*",
       "electron/**/*",
       "package.json"
     ],
@@ -48,11 +50,20 @@
       "output": "release"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/codeforge.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/codeforge.ico",
+      "uninstallerIcon": "assets/codeforge.ico",
+      "installerHeaderIcon": "assets/codeforge.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": false,
+      "shortcutName": "CodeForge",
+      "menuCategory": "CodeForge"
     }
   }
 }

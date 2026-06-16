@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   selectAttachments: () => ipcRenderer.invoke('dialog:select-attachments'),
   getSystemStatus: () => ipcRenderer.invoke('system:status'),
   runAgent: (request) => ipcRenderer.invoke('agent:run', request),
+  generateSystemPrompt: (request) => ipcRenderer.invoke('agent:generate-system-prompt', request),
+  notifyAgentComplete: (input) => ipcRenderer.invoke('agent:notify-complete', input),
   cancelAgent: (runId) => ipcRenderer.invoke('agent:cancel', runId),
   onAgentOutput: (callback) => {
     const listener = (_event, payload) => callback(payload);
@@ -19,6 +21,7 @@ contextBridge.exposeInMainWorld('agentWorkspace', {
   removePlugin: (projectPath, packageName) =>
     ipcRenderer.invoke('plugins:remove', projectPath, packageName),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  openPath: (targetPath) => ipcRenderer.invoke('shell:open-path', targetPath),
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
